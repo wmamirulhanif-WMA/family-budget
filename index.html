@@ -64,7 +64,7 @@ else{add([{Item:'Income',Amount:c.inc},{Item:'Expenses',Amount:c.exp},{Item:'Ban
 add(list('cat').map(k=>({Category:k.n,Spent:c.bc[k.id]||0,'Monthly budget':k.x,Remaining:k.x?k.x-(c.bc[k.id]||0):''})),'By Category');
 add(nm().map(n=>({Person:n,Spent:c.bp[n]||0})),'By Person');add(list('acc').map(x=>({Account:x.n,Balance:bal(x)})),'Accounts')}
 XLSX.writeFile(wb,`budget-${raw?'raw':'summary'}-${c.a}_${c.b}.xlsx`)}
-function render(){$('#nav').innerHTML=[['dash','📊','Dashboard'],['add','➕','Add'],['hist','🧾','History'],['set','⚙️','Settings']].map(([k,i,l])=>`<button class="${tab==k?'on':''}" onclick="tab='${k}';if(k!='add')edit=null;render()">${i}<br>${l}</button>`).join('');$('#app').innerHTML={dash,add,hist,set}[tab]()}
+function render(){$('#nav').innerHTML=[['dash','📊','Dashboard'],['add','➕','Add'],['hist','🧾','History'],['set','⚙️','Settings']].map(([k,i,l])=>`<button class="${tab==k?'on':''}" onclick="tab='${k}';if(tab!='add')edit=null;render()">${i}<br>${l}</button>`).join('');$('#app').innerHTML={dash,add,hist,set}[tab]()}
 (async()=>{const d=await db;d.transaction('k').objectStore('k').get('s').onsuccess=e=>{if(e.target.result)S=e.target.result;render();sync()};render()})();
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});setInterval(sync,30000);
 if('serviceWorker'in navigator){const had=navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js');navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had)location.reload()})}
