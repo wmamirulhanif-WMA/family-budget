@@ -1,0 +1,71 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=theme-color content="#0f766e"><link rel=manifest href=manifest.json><link rel=icon href=icon-192.png><title>Family Budget</title>
+<style>
+:root{--g:#0f766e;--b:#f3f4f6;--c:#fff;--t:#111;--m:#6b7280;--r:#dc2626}
+@media(prefers-color-scheme:dark){:root{--b:#111827;--c:#1f2937;--t:#f3f4f6;--m:#9ca3af}}
+*{box-sizing:border-box}body{margin:0;font:15px system-ui,sans-serif;background:var(--b);color:var(--t);padding-bottom:72px}
+main{padding:12px;max-width:640px;margin:auto}.card{background:var(--c);border-radius:12px;padding:12px;margin:0 0 12px}
+input,select,button{font:inherit;width:100%;padding:10px;margin:4px 0;border-radius:8px;border:1px solid #9ca3af66;background:var(--c);color:var(--t)}
+button{background:var(--g);color:#fff;border:0}button.s{background:#9ca3af33;color:var(--t)}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--c);border-top:1px solid #9ca3af44}nav button{background:0;color:var(--m);border-radius:0;margin:0;font-size:12px}nav .on{color:var(--g);font-weight:700}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between}.row>*{width:auto;flex:1}.row>.f{flex:0 0 auto}
+.bar{height:8px;background:#9ca3af33;border-radius:4px}.bar i{display:block;height:100%;background:var(--g);border-radius:4px}
+.m{color:var(--m);font-size:13px}.neg{color:var(--r)}h3{margin:2px 0 8px}.big{font-size:20px;font-weight:700}
+</style></head><body><main id=app></main><nav id=nav></nav>
+<script>
+const $=s=>document.querySelector(s),uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+fmt=n=>(+n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}),
+list=k=>Object.values(S.items).filter(i=>i.k==k&&!i.del),nm=()=>(S.items.cfg||{names:['Husband','Wife']}).names,
+n_=id=>(S.items[id]||{}).n||'',TN={exp:'Expense',inc:'Income',xfer:'Transfer'};
+let S={items:{},url:''},tab='dash',rng='cur',from='',to_='',edit=null,ty='exp',R='';
+const db=new Promise(r=>{const q=indexedDB.open('fb',1);q.onupgradeneeded=()=>q.result.createObjectStore('k');q.onsuccess=()=>r(q.result)});
+const save=()=>db.then(d=>d.transaction('k','readwrite').objectStore('k').put(S,'s'));
+async function sync(){if(!S.url)return;try{const r=await(await fetch(S.url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({key:S.key,items:S.items})})).json();
+if(r.err)return alert('Sync failed: wrong secret key');for(const id in r)if(!S.items[id]||r[id].upd>=S.items[id].upd)S.items[id]=r[id];await save();render()}catch(e){}}
+function put(o){o.upd=Date.now();S.items[o.id]=o;save();sync();render()}
+function rg(){const n=new Date(),y=n.getFullYear(),m=n.getMonth(),d=x=>x.toISOString().slice(0,10),L=(a,b)=>[d(new Date(Date.UTC(a,b,1))),d(new Date(Date.UTC(a,b+1,0)))];
+return rng=='cur'?L(y,m):rng=='last'?L(y,m-1):[from||'0000',to_||'9999']}
+function calc(){const[a,b]=rg(),T=list('tx').filter(t=>t.date>=a&&t.date<=b).sort((p,q)=>p.date<q.date?1:-1),
+s=f=>T.filter(f).reduce((z,t)=>z+t.amt,0),bc={},bp={};
+T.filter(t=>t.t=='exp').forEach(t=>{bc[t.cat]=(bc[t.cat]||0)+t.amt;bp[t.who]=(bp[t.who]||0)+t.amt});
+return{a,b,T,inc:s(t=>t.t=='inc'),exp:s(t=>t.t=='exp'),fee:T.reduce((z,t)=>z+(t.fee||0),0),bc,bp}}
+const bal=x=>list('tx').reduce((z,t)=>z+(t.t=='inc'&&t.acc==x.id?t.amt:t.t=='exp'&&t.acc==x.id?-t.amt:t.t=='xfer'?(t.acc==x.id?-t.amt-(t.fee||0):0)+(t.to==x.id?t.amt:0):0),x.x||0);
+function dash(){const c=calc(),net=c.inc-c.exp-c.fee,bar=(v,mx)=>`<div class=bar><i style="width:${Math.min(100,mx?v/mx*100:0)}%;${v>mx&&mx?'background:var(--r)':''}"></i></div>`;
+return `<div class=card><select onchange="rng=this.value;render()">${[['cur','This month'],['last','Last month'],['custom','Custom range']].map(([k,l])=>`<option value=${k} ${rng==k?'selected':''}>${l}</option>`).join('')}</select>
+${rng=='custom'?`<div class=row><input type=date value="${from}" onchange="from=this.value;render()"><input type=date value="${to_}" onchange="to_=this.value;render()"></div>`:`<div class=m>${c.a} → ${c.b}</div>`}</div>
+<div class=card><div class=row><div><div class=m>Income</div><div class=big>${fmt(c.inc)}</div></div><div><div class=m>Expenses</div><div class="big neg">${fmt(c.exp)}</div></div><div><div class=m>Net</div><div class="big ${net<0?'neg':''}">${fmt(net)}</div></div></div>${c.fee?`<div class=m>Includes bank charges: ${fmt(c.fee)}</div>`:''}</div>
+<div class=card><h3>Categories (budget is monthly)</h3>${list('cat').map(k=>`<div class=row><span>${k.n}</span><span class=f>${fmt(c.bc[k.id])}${k.x?' / '+fmt(k.x):''}</span></div>${k.x?bar(c.bc[k.id]||0,k.x):''}`).join('')||'<div class=m>Add categories in Settings</div>'}</div>
+<div class=card><h3>By person</h3>${nm().map(n=>`<div class=row><span>${n}</span><span class=f>${fmt(c.bp[n])}</span></div>`).join('')}</div>
+<div class=card><h3>Account balances</h3>${list('acc').map(x=>`<div class=row><span>${x.n}</span><span class="f ${bal(x)<0?'neg':''}">${fmt(bal(x))}</span></div>`).join('')||'<div class=m>Add accounts in Settings</div>'}</div>`}
+function add(){const e=edit&&S.items[edit]||{},o=(L,v)=>L.map(x=>`<option value=${x.id} ${x.id==v?'selected':''}>${x.n}</option>`).join('');
+return `<div class=card><div class=row>${Object.entries(TN).map(([k,l])=>`<button class="${ty==k?'':'s'}" onclick="ty='${k}';render()">${l}</button>`).join('')}</div>
+<input id=amt type=number step=0.01 inputmode=decimal placeholder=Amount value="${e.amt||''}"><input id=date type=date value="${e.date||new Date().toISOString().slice(0,10)}">
+${ty!='xfer'?`<select id=who>${nm().map(n=>`<option ${n==e.who?'selected':''}>${n}</option>`).join('')}</select>`:''}
+${ty=='exp'?`<select id=cat>${o(list('cat'),e.cat)}</select>`:''}
+<select id=acc>${o(list('acc'),e.acc)}</select>
+${ty=='xfer'?`<select id=to>${o(list('acc'),e.to)}</select><input id=fee type=number step=0.01 inputmode=decimal placeholder="Bank charge (optional)" value="${e.fee||''}">`:''}
+<input id=note placeholder=Notes value="${e.note||''}">
+${ty=='exp'?`<input type=file accept="image/*" onchange=rcp(this)><span class=m>${e.rcpt?'Receipt attached (pick a file to replace)':'Receipt (optional)'}</span>`:''}
+<button onclick=sv()>${edit?'Update':'Save'}</button>${edit?'<button class=s onclick="edit=null;render()">Cancel</button>':''}</div>`}
+function rcp(i){const f=i.files[0];if(!f)return;const im=new Image;im.onload=()=>{const k=Math.min(1,800/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);R=c.toDataURL('image/jpeg',.55)};im.src=URL.createObjectURL(f)}
+function sv(){const v=i=>($('#'+i)||{}).value,amt=+v('amt');if(!amt||!v('acc'))return alert('Enter an amount, and add an account in Settings first');if(ty=='exp'&&!v('cat'))return alert('Add a category in Settings first');
+const old=edit&&S.items[edit]||{};put({...old,id:edit||uid(),k:'tx',t:ty,amt,date:v('date'),who:v('who')||'',cat:v('cat')||'',acc:v('acc'),to:v('to')||'',fee:+v('fee')||0,note:v('note'),rcpt:R||old.rcpt||''});edit=null;R='';tab='hist';render()}
+function hist(){const c=calc();return `<div class=m style="margin:0 0 8px">${c.a} → ${c.b} (change range on Dashboard)</div>`+c.T.map(t=>`<div class=card><div class=row onclick="edit='${t.id}';ty='${t.t}';tab='add';render()"><div><b>${t.t=='xfer'?'Transfer '+n_(t.acc)+' → '+n_(t.to):n_(t.cat)||'Income'}</b><div class=m>${t.date} · ${t.who||''} · ${t.t=='xfer'?'':n_(t.acc)} ${t.note||''}</div></div><b class="f ${t.t=='exp'?'neg':''}">${t.t=='exp'?'-':''}${fmt(t.amt)}</b></div>
+<div class=row>${t.rcpt?`<span onclick="this.outerHTML='<img style=width:100% src=&quot;'+S.items['${t.id}'].rcpt+'&quot;>'">📎 Receipt</span>`:'<span></span>'}<span class="f m" onclick="if(confirm('Delete?'))put({...S.items['${t.id}'],del:true})">✕ Delete</span></div></div>`).join('')||'<div class=m>No transactions</div>'}
+function pa(k,id){const o=S.items[id]||{},n=prompt(k=='acc'?'Account name':'Category name',o.n||'');if(!n)return;const x=prompt(k=='acc'?'Opening balance':'Monthly budget (0 = none)',o.x||0);put({...o,id:id||uid(),k,n,x:+x||0})}
+function pn(i){const L=[...nm()],n=prompt('Name',L[i]);if(!n)return;L[i]=n;put({...(S.items.cfg||{}),id:'cfg',k:'cfg',names:L})}
+function set(){const sec=(k,t)=>`<div class=card><h3>${t}</h3>${list(k).map(x=>`<div class=row><span onclick="pa('${k}','${x.id}')">${x.n} <span class=m>${k=='acc'?'open':'budget'} ${fmt(x.x)}</span></span><span class="f m" onclick="if(confirm('Delete ${x.n}?'))put({...S.items['${x.id}'],del:true})">✕</span></div>`).join('')}<button class=s onclick="pa('${k}')">+ Add</button></div>`;
+return `<div class=card><h3>People</h3>${nm().map((n,i)=>`<button class=s onclick=pn(${i})>${n} (rename)</button>`).join('')}</div>${sec('acc','Accounts (tap to edit)')}${sec('cat','Categories & budgets (tap to edit)')}
+<div class=card><h3>Export Excel (current dashboard range)</h3><button onclick=xl(1)>Raw transactions</button><button onclick=xl(0)>Summary (massaged)</button></div>
+<div class=card><h3>Sync (Google Sheets)</h3><div class=m>Use the same Web app URL and secret key on both phones.</div><input id=url placeholder="https://script.google.com/macros/s/.../exec" value="${S.url}"><input id=key placeholder="Secret key" value="${S.key||''}"><button onclick="S.url=$('#url').value.trim();S.key=$('#key').value.trim();save();sync();alert('Saved. Syncing...')">Save & sync now</button></div>`}
+const ld=()=>window.XLSX?0:new Promise((r,j)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=r;s.onerror=()=>{alert('Internet needed to load the export library');j()};document.head.appendChild(s)});
+async function xl(raw){await ld();const c=calc(),W=XLSX.utils,wb=W.book_new(),add=(rows,n)=>W.book_append_sheet(wb,W.json_to_sheet(rows),n);
+if(raw)add(c.T.slice().reverse().map(t=>({Date:t.date,Type:TN[t.t],By:t.who,Category:n_(t.cat),Account:n_(t.acc),'To account':n_(t.to),Amount:t.amt,'Bank charge':t.fee||0,Notes:t.note,Receipt:t.rcpt?'Yes':''})),'Transactions');
+else{add([{Item:'Income',Amount:c.inc},{Item:'Expenses',Amount:c.exp},{Item:'Bank charges',Amount:c.fee},{Item:'Net',Amount:c.inc-c.exp-c.fee}],'Summary');
+add(list('cat').map(k=>({Category:k.n,Spent:c.bc[k.id]||0,'Monthly budget':k.x,Remaining:k.x?k.x-(c.bc[k.id]||0):''})),'By Category');
+add(nm().map(n=>({Person:n,Spent:c.bp[n]||0})),'By Person');add(list('acc').map(x=>({Account:x.n,Balance:bal(x)})),'Accounts')}
+XLSX.writeFile(wb,`budget-${raw?'raw':'summary'}-${c.a}_${c.b}.xlsx`)}
+function render(){$('#nav').innerHTML=[['dash','📊','Dashboard'],['add','➕','Add'],['hist','🧾','History'],['set','⚙️','Settings']].map(([k,i,l])=>`<button class="${tab==k?'on':''}" onclick="tab='${k}';if(k!='add')edit=null;render()">${i}<br>${l}</button>`).join('');$('#app').innerHTML={dash,add,hist,set}[tab]()}
+(async()=>{const d=await db;d.transaction('k').objectStore('k').get('s').onsuccess=e=>{if(e.target.result)S=e.target.result;render();sync()};render()})();
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});setInterval(sync,30000);
+if('serviceWorker'in navigator){const had=navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js');navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had)location.reload()})}
+</script></body></html>
