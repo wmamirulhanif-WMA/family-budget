@@ -30,11 +30,18 @@ s=f=>T.filter(f).reduce((z,t)=>z+t.amt,0),bc={},bp={};
 T.filter(t=>t.t=='exp').forEach(t=>{bc[t.cat]=(bc[t.cat]||0)+t.amt;bp[t.who]=(bp[t.who]||0)+t.amt});
 return{a,b,T,inc:s(t=>t.t=='inc'),exp:s(t=>t.t=='exp'),fee:T.reduce((z,t)=>z+(t.fee||0),0),bc,bp}}
 const bal=x=>list('tx').reduce((z,t)=>z+(t.t=='inc'&&t.acc==x.id?t.amt:t.t=='exp'&&t.acc==x.id?-t.amt:t.t=='xfer'?(t.acc==x.id?-t.amt-(t.fee||0):0)+(t.to==x.id?t.amt:0):0),x.x||0);
+const PC=['#0f766e','#f59e0b'];
+function pie(d){const t=d.reduce((z,x)=>z+x[1],0);if(!t)return '<div class=m>No expenses in this range</div>';let a=-Math.PI/2,s='';const P=an=>[(60+55*Math.cos(an)).toFixed(2),(60+55*Math.sin(an)).toFixed(2)];
+d.forEach(([n,v],i)=>{const f=v/t,e=a+f*2*Math.PI;if(f>=.9999)s+=`<circle cx=60 cy=60 r=55 fill="${PC[i]}"/>`;else if(f>0){const[x1,y1]=P(a),[x2,y2]=P(e);s+=`<path d="M60 60L${x1} ${y1}A55 55 0 ${f>.5?1:0} 1 ${x2} ${y2}Z" fill="${PC[i]}"/>`}a=e});
+return `<div class=row><svg viewBox="0 0 120 120" style="flex:0 0 130px;width:130px">${s}</svg><div>${d.map(([n,v],i)=>`<div style="margin-bottom:6px"><span style="color:${PC[i]}">●</span> ${n}<br><b>${fmt(v)}</b> <span class=m>${(v/t*100).toFixed(1)}%</span></div>`).join('')}</div></div>`}
+const hb=(l,v,mx,col)=>`<div class=row style="margin:6px 0"><span class=m style="flex:0 0 78px">${l}</span><div class=bar style="flex:1"><i style="width:${mx?Math.min(100,Math.max(v,0)/mx*100):0}%;background:${col}"></i></div><span style="flex:0 0 92px;text-align:right">${fmt(v)}</span></div>`;
 function dash(){const c=calc(),bar=(v,mx)=>`<div class=bar><i style="width:${Math.min(100,mx?v/mx*100:0)}%;${v>mx&&mx?'background:var(--r)':''}"></i></div>`,vis=x=>!x.o||x.o=='Joint'||x.o==S.me||U[x.o],K=list('cat'),pp=n=>c.T.reduce((z,t)=>z+(t.who==n?(t.t=='exp'?t.amt:0)+(t.fee||0):0),0),
 tb=K.reduce((z,k)=>z+(k.x||0),0),ts=K.reduce((z,k)=>z+(k.x?c.bc[k.id]||0:0),0);
 return `<div class=card><div class=m>👤 ${S.me}</div><select onchange="rng=this.value;render()">${[['cur','This month'],['last','Last month'],['custom','Custom range']].map(([k,l])=>`<option value=${k} ${rng==k?'selected':''}>${l}</option>`).join('')}</select>
 ${rng=='custom'?`<div class=row><input type=date value="${from}" onchange="from=this.value;render()"><input type=date value="${to_}" onchange="to_=this.value;render()"></div>`:`<div class=m>${c.a} → ${c.b}</div>`}</div>
 <div class=card><div class=row>${nm().map(n=>`<div><div class=m>${n}</div><div class=big>${fmt(pp(n))}</div></div>`).join('')}</div><div class=row style="margin-top:10px"><div><div class=m>Total expenses</div><div class="big neg">${fmt(c.exp+c.fee)}</div>${c.fee?`<div class=m>incl. bank charges ${fmt(c.fee)}</div>`:''}</div><div><div class=m>Budget left</div><div class="big ${tb-ts<0?'neg':''}">${fmt(tb-ts)}</div><div class=m>of ${fmt(tb)}</div></div></div></div>
+<div class=card><h3>Expenses by person</h3>${pie(nm().map(n=>[n,c.bp[n]||0]))}</div>
+<div class=card><h3>Expenses vs budget</h3>${(mx=>hb('Expenses',c.exp+c.fee,mx,'#dc2626')+hb('Budget',tb,mx,'#6b7280')+hb('Budget left',tb-ts,mx,tb-ts<0?'#dc2626':'#0f766e'))(Math.max(tb,c.exp+c.fee,1))}<div class=m>${tb?(ts/tb*100).toFixed(0):0}% of budget used (budgeted categories)</div></div>
 <div class=card><h3>Budget by category (monthly)</h3>${K.map(k=>{const s=c.bc[k.id]||0;return `<div class=row><span>${k.n}</span><span class="f ${k.x&&k.x-s<0?'neg':''}">${k.x?'left '+fmt(k.x-s):fmt(s)+' spent'}</span></div>${k.x?`<div class=m>${fmt(s)} / ${fmt(k.x)}</div>`+bar(s,k.x):''}`}).join('')||'<div class=m>Add categories in Settings</div>'}</div>
 <div class=card><h3>Account balances</h3>${list('acc').map(x=>`<div class=row><span>${x.n} <span class=m>${x.o||''}</span></span>${vis(x)?`<span class="f ${bal(x)<0?'neg':''}">${fmt(bal(x))}</span>`:`<span class=f onclick="ul(${nm().indexOf(x.o)})">XXXXX 🔒</span>`}</div>`).join('')||'<div class=m>Add accounts in Settings</div>'}</div>`}
 function add(){const e=edit&&S.items[edit]||D||{},rc=R||(RM?'':e.rcpt||''),o=(L,v)=>L.map(x=>`<option value=${x.id} ${x.id==v?'selected':''}>${x.n}${x.o?' · '+x.o:''}</option>`).join('');
@@ -85,7 +92,7 @@ function render(){$('#nav').innerHTML=[['dash','📊','Dashboard'],['add','➕',
 function chk(d){d.transaction('k').objectStore('k').get('share').onsuccess=e=>{const s=e.target.result;if(!s)return;d.transaction('k','readwrite').objectStore('k').delete('share');
 const m=(s.text||'').match(/(?:RM|MYR)\s*([\d,]+(?:\.\d{1,2})?)/i)||(s.text||'').match(/(\d[\d,]*\.\d{2})/);
 D={amt:m?m[1].replace(/,/g,''):'',acc:S.la};ty='exp';tab='add';R='';RM=0;render();
-if(s.buf)rf(new Blob([s.buf],{type:s.type||'image/jpeg'}),0,render);else alert('The bank app shared no image (only text). Try sharing the screenshot or image instead.')}}
+if(s.buf)rf(new Blob([s.buf],{type:s.type||'image/jpeg'}),0,render);else alert('No image reached the app (fields received: '+(s.keys||'none')+'). Try sharing the screenshot/image itself.')}}
 (async()=>{const d=await db;d.transaction('k').objectStore('k').get('s').onsuccess=e=>{if(e.target.result)S=e.target.result;render();sync();chk(d)};render()})();
 document.addEventListener('visibilitychange',()=>{if(document.hidden)U={};else{sync();if(tab!='add')render()}});setInterval(sync,30000);
 if('serviceWorker'in navigator){const had=navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js');navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had)location.reload()})}
