@@ -14,9 +14,9 @@ nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--c);bord
 <script>
 const $=s=>document.querySelector(s),uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6),
 fmt=n=>(+n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}),
-list=k=>Object.values(S.items).filter(i=>i.k==k&&!i.del),nm=()=>(S.items.cfg||{names:['Husband','Wife']}).names,
+list=k=>Object.values(S.items).filter(i=>i.k==k&&!i.del),cfg=()=>S.items.cfg||{names:['Husband','Wife']},nm=()=>cfg().names,
 n_=id=>(S.items[id]||{}).n||'',TN={exp:'Expense',inc:'Income',xfer:'Transfer'};
-let S={items:{},url:''},tab='dash',rng='cur',from='',to_='',edit=null,ty='exp',R='';
+let S={items:{},url:''},U={},tab='dash',rng='cur',from='',to_='',edit=null,ty='exp',R='';
 const db=new Promise(r=>{const q=indexedDB.open('fb',1);q.onupgradeneeded=()=>q.result.createObjectStore('k');q.onsuccess=()=>r(q.result)});
 const save=()=>db.then(d=>d.transaction('k','readwrite').objectStore('k').put(S,'s'));
 async function sync(){if(!S.url)return;try{const r=await(await fetch(S.url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({key:S.key,items:S.items})})).json();
@@ -29,32 +29,40 @@ s=f=>T.filter(f).reduce((z,t)=>z+t.amt,0),bc={},bp={};
 T.filter(t=>t.t=='exp').forEach(t=>{bc[t.cat]=(bc[t.cat]||0)+t.amt;bp[t.who]=(bp[t.who]||0)+t.amt});
 return{a,b,T,inc:s(t=>t.t=='inc'),exp:s(t=>t.t=='exp'),fee:T.reduce((z,t)=>z+(t.fee||0),0),bc,bp}}
 const bal=x=>list('tx').reduce((z,t)=>z+(t.t=='inc'&&t.acc==x.id?t.amt:t.t=='exp'&&t.acc==x.id?-t.amt:t.t=='xfer'?(t.acc==x.id?-t.amt-(t.fee||0):0)+(t.to==x.id?t.amt:0):0),x.x||0);
-function dash(){const c=calc(),net=c.inc-c.exp-c.fee,bar=(v,mx)=>`<div class=bar><i style="width:${Math.min(100,mx?v/mx*100:0)}%;${v>mx&&mx?'background:var(--r)':''}"></i></div>`;
-return `<div class=card><select onchange="rng=this.value;render()">${[['cur','This month'],['last','Last month'],['custom','Custom range']].map(([k,l])=>`<option value=${k} ${rng==k?'selected':''}>${l}</option>`).join('')}</select>
+function dash(){const c=calc(),bar=(v,mx)=>`<div class=bar><i style="width:${Math.min(100,mx?v/mx*100:0)}%;${v>mx&&mx?'background:var(--r)':''}"></i></div>`,vis=x=>!x.o||x.o=='Joint'||x.o==S.me||U[x.o],K=list('cat'),
+tb=K.reduce((z,k)=>z+(k.x||0),0),ts=K.reduce((z,k)=>z+(k.x?c.bc[k.id]||0:0),0);
+return `<div class=card><div class=m>👤 ${S.me}</div><select onchange="rng=this.value;render()">${[['cur','This month'],['last','Last month'],['custom','Custom range']].map(([k,l])=>`<option value=${k} ${rng==k?'selected':''}>${l}</option>`).join('')}</select>
 ${rng=='custom'?`<div class=row><input type=date value="${from}" onchange="from=this.value;render()"><input type=date value="${to_}" onchange="to_=this.value;render()"></div>`:`<div class=m>${c.a} → ${c.b}</div>`}</div>
-<div class=card><div class=row><div><div class=m>Income</div><div class=big>${fmt(c.inc)}</div></div><div><div class=m>Expenses</div><div class="big neg">${fmt(c.exp)}</div></div><div><div class=m>Net</div><div class="big ${net<0?'neg':''}">${fmt(net)}</div></div></div>${c.fee?`<div class=m>Includes bank charges: ${fmt(c.fee)}</div>`:''}</div>
-<div class=card><h3>Categories (budget is monthly)</h3>${list('cat').map(k=>`<div class=row><span>${k.n}</span><span class=f>${fmt(c.bc[k.id])}${k.x?' / '+fmt(k.x):''}</span></div>${k.x?bar(c.bc[k.id]||0,k.x):''}`).join('')||'<div class=m>Add categories in Settings</div>'}</div>
-<div class=card><h3>By person</h3>${nm().map(n=>`<div class=row><span>${n}</span><span class=f>${fmt(c.bp[n])}</span></div>`).join('')}</div>
-<div class=card><h3>Account balances</h3>${list('acc').map(x=>`<div class=row><span>${x.n}</span><span class="f ${bal(x)<0?'neg':''}">${fmt(bal(x))}</span></div>`).join('')||'<div class=m>Add accounts in Settings</div>'}</div>`}
-function add(){const e=edit&&S.items[edit]||{},o=(L,v)=>L.map(x=>`<option value=${x.id} ${x.id==v?'selected':''}>${x.n}</option>`).join('');
+<div class=card><div class=row><div><div class=m>Expenses</div><div class="big neg">${fmt(c.exp+c.fee)}</div>${c.fee?`<div class=m>incl. bank charges ${fmt(c.fee)}</div>`:''}</div><div><div class=m>Budget left</div><div class="big ${tb-ts<0?'neg':''}">${fmt(tb-ts)}</div><div class=m>of ${fmt(tb)}</div></div></div></div>
+<div class=card><h3>Budget by category (monthly)</h3>${K.map(k=>{const s=c.bc[k.id]||0;return `<div class=row><span>${k.n}</span><span class="f ${k.x&&k.x-s<0?'neg':''}">${k.x?'left '+fmt(k.x-s):fmt(s)+' spent'}</span></div>${k.x?`<div class=m>${fmt(s)} / ${fmt(k.x)}</div>`+bar(s,k.x):''}`}).join('')||'<div class=m>Add categories in Settings</div>'}</div>
+<div class=card><h3>Account balances</h3>${list('acc').map(x=>`<div class=row><span>${x.n} <span class=m>${x.o||''}</span></span>${vis(x)?`<span class="f ${bal(x)<0?'neg':''}">${fmt(bal(x))}</span>`:`<span class=f onclick="ul(${nm().indexOf(x.o)})">XXXXX 🔒</span>`}</div>`).join('')||'<div class=m>Add accounts in Settings</div>'}</div>`}
+function add(){const e=edit&&S.items[edit]||{},o=(L,v)=>L.map(x=>`<option value=${x.id} ${x.id==v?'selected':''}>${x.n}${x.o?' · '+x.o:''}</option>`).join('');
 return `<div class=card><div class=row>${Object.entries(TN).map(([k,l])=>`<button class="${ty==k?'':'s'}" onclick="ty='${k}';render()">${l}</button>`).join('')}</div>
 <input id=amt type=number step=0.01 inputmode=decimal placeholder=Amount value="${e.amt||''}"><input id=date type=date value="${e.date||new Date().toISOString().slice(0,10)}">
-${ty!='xfer'?`<select id=who>${nm().map(n=>`<option ${n==e.who?'selected':''}>${n}</option>`).join('')}</select>`:''}
 ${ty=='exp'?`<select id=cat>${o(list('cat'),e.cat)}</select>`:''}
 <select id=acc>${o(list('acc'),e.acc)}</select>
 ${ty=='xfer'?`<select id=to>${o(list('acc'),e.to)}</select><input id=fee type=number step=0.01 inputmode=decimal placeholder="Bank charge (optional)" value="${e.fee||''}">`:''}
 <input id=note placeholder=Notes value="${e.note||''}">
-${ty=='exp'?`<input type=file accept="image/*" onchange=rcp(this)><span class=m>${e.rcpt?'Receipt attached (pick a file to replace)':'Receipt (optional)'}</span>`:''}
+${ty=='exp'?`<div class=row><button class=s onclick="$('#cam').click()">📷 Take photo</button><button class=s onclick="$('#gal').click()">🖼 Choose file</button></div><input id=cam type=file accept="image/*" capture=environment hidden onchange="rcp(this,1)"><input id=gal type=file accept="image/*" hidden onchange="rcp(this,0)"><span class=m id=rs>${e.rcpt?'Receipt attached (take/choose to replace)':'Receipt (optional)'}</span>`:''}
 <button onclick=sv()>${edit?'Update':'Save'}</button>${edit?'<button class=s onclick="edit=null;render()">Cancel</button>':''}</div>`}
-function rcp(i){const f=i.files[0];if(!f)return;const im=new Image;im.onload=()=>{const k=Math.min(1,800/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);R=c.toDataURL('image/jpeg',.55)};im.src=URL.createObjectURL(f)}
+function rcp(i,st){const f=i.files[0];if(!f)return;const im=new Image;im.onload=()=>{const k=Math.min(1,800/Math.max(im.width,im.height)),c=document.createElement('canvas'),w=c.width=im.width*k,h=c.height=im.height*k,x=c.getContext('2d');x.drawImage(im,0,0,w,h);
+if(st){const t=new Date().toLocaleString(),fs=Math.max(14,w/28);x.font=fs+'px sans-serif';const tw=x.measureText(t).width;x.fillStyle='rgba(0,0,0,.6)';x.fillRect(w-tw-fs,h-fs*1.8,tw+fs,fs*1.8);x.fillStyle='#ffd400';x.fillText(t,w-tw-fs/2,h-fs*.55)}
+R=c.toDataURL('image/jpeg',.6);$('#rs').textContent='Photo ready ✓'};im.src=URL.createObjectURL(f)}
 function sv(){const v=i=>($('#'+i)||{}).value,amt=+v('amt');if(!amt||!v('acc'))return alert('Enter an amount, and add an account in Settings first');if(ty=='exp'&&!v('cat'))return alert('Add a category in Settings first');
-const old=edit&&S.items[edit]||{};put({...old,id:edit||uid(),k:'tx',t:ty,amt,date:v('date'),who:v('who')||'',cat:v('cat')||'',acc:v('acc'),to:v('to')||'',fee:+v('fee')||0,note:v('note'),rcpt:R||old.rcpt||''});edit=null;R='';tab='hist';render()}
+const old=edit&&S.items[edit]||{};put({...old,id:edit||uid(),k:'tx',t:ty,amt,date:v('date'),who:old.who||S.me,cat:v('cat')||'',acc:v('acc'),to:v('to')||'',fee:+v('fee')||0,note:v('note'),rcpt:R||old.rcpt||''});edit=null;R='';tab='hist';render()}
 function hist(){const c=calc();return `<div class=m style="margin:0 0 8px">${c.a} → ${c.b} (change range on Dashboard)</div>`+c.T.map(t=>`<div class=card><div class=row onclick="edit='${t.id}';ty='${t.t}';tab='add';render()"><div><b>${t.t=='xfer'?'Transfer '+n_(t.acc)+' → '+n_(t.to):n_(t.cat)||'Income'}</b><div class=m>${t.date} · ${t.who||''} · ${t.t=='xfer'?'':n_(t.acc)} ${t.note||''}</div></div><b class="f ${t.t=='exp'?'neg':''}">${t.t=='exp'?'-':''}${fmt(t.amt)}</b></div>
 <div class=row>${t.rcpt?`<span onclick="this.outerHTML='<img style=width:100% src=&quot;'+S.items['${t.id}'].rcpt+'&quot;>'">📎 Receipt</span>`:'<span></span>'}<span class="f m" onclick="if(confirm('Delete?'))put({...S.items['${t.id}'],del:true})">✕ Delete</span></div></div>`).join('')||'<div class=m>No transactions</div>'}
-function pa(k,id){const o=S.items[id]||{},n=prompt(k=='acc'?'Account name':'Category name',o.n||'');if(!n)return;const x=prompt(k=='acc'?'Opening balance':'Monthly budget (0 = none)',o.x||0);put({...o,id:id||uid(),k,n,x:+x||0})}
-function pn(i){const L=[...nm()],n=prompt('Name',L[i]);if(!n)return;L[i]=n;put({...(S.items.cfg||{}),id:'cfg',k:'cfg',names:L})}
-function set(){const sec=(k,t)=>`<div class=card><h3>${t}</h3>${list(k).map(x=>`<div class=row><span onclick="pa('${k}','${x.id}')">${x.n} <span class=m>${k=='acc'?'open':'budget'} ${fmt(x.x)}</span></span><span class="f m" onclick="if(confirm('Delete ${x.n}?'))put({...S.items['${x.id}'],del:true})">✕</span></div>`).join('')}<button class=s onclick="pa('${k}')">+ Add</button></div>`;
-return `<div class=card><h3>People</h3>${nm().map((n,i)=>`<button class=s onclick=pn(${i})>${n} (rename)</button>`).join('')}</div>${sec('acc','Accounts (tap to edit)')}${sec('cat','Categories & budgets (tap to edit)')}
+function pa(k,id){const o=S.items[id]||{},n=prompt(k=='acc'?'Account name':'Category name',o.n||'');if(!n)return;const x=prompt(k=='acc'?'Opening balance':'Monthly budget (0 = none)',o.x||0);let ow=o.o;
+if(k=='acc'){const N=nm(),r=prompt(`Owner: 1=${N[0]}, 2=${N[1]}, 3=Joint`,ow==N[0]?1:ow==N[1]?2:ow=='Joint'?3:'');ow=[N[0],N[1],'Joint'][r-1];if(!ow)return alert('Not saved: owner must be 1, 2 or 3')}
+put({...o,id:id||uid(),k,n,x:+x||0,o:ow})}
+function pn(i){const L=[...nm()],n=prompt('Name',L[i]);if(!n)return;L[i]=n;put({...cfg(),id:'cfg',k:'cfg',names:L})}
+const sha=async s=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))].map(b=>b.toString(16).padStart(2,'0')).join('');
+async function spw(){const p=prompt('Choose a password to protect your account balances');if(!p)return;const c=cfg();put({...c,id:'cfg',k:'cfg',names:c.names,pw:{...(c.pw||{}),[S.me]:await sha(p)}});alert('Password saved')}
+async function ul(i){const o=nm()[i],h=(cfg().pw||{})[o];if(!h)return alert(o+' has not set a password yet (Settings → Set my password)');const p=prompt('Password of '+o);if(!p)return;if(await sha(p)==h){U[o]=1;render()}else alert('Wrong password')}
+function pick(){return `<div class=card><h3>Whose phone is this?</h3>${nm().map((n,i)=>`<button onclick="S.me=nm()[${i}];save();render()">${n}</button>`).join('')}</div>`}
+function set(){const sec=(k,t)=>`<div class=card><h3>${t}</h3>${list(k).map(x=>`<div class=row><span onclick="pa('${k}','${x.id}')">${x.n} <span class=m>${k=='acc'?(x.o||'')+' · open':'budget'} ${fmt(x.x)}</span></span><span class="f m" onclick="if(confirm('Delete this?'))put({...S.items['${x.id}'],del:true})">✕</span></div>`).join('')}<button class=s onclick="pa('${k}')">+ Add</button></div>`;
+return `<div class=card><h3>This phone belongs to: ${S.me}</h3><button class=s onclick="S.me='';save();render()">Change</button><button onclick=spw()>Set my password (protects my account balances)</button></div>
+<div class=card><h3>People (rename before adding data)</h3>${nm().map((n,i)=>`<button class=s onclick=pn(${i})>${n} (rename)</button>`).join('')}</div>${sec('acc','Accounts (tap to edit)')}${sec('cat','Categories & budgets (tap to edit)')}
 <div class=card><h3>Export Excel (current dashboard range)</h3><button onclick=xl(1)>Raw transactions</button><button onclick=xl(0)>Summary (massaged)</button></div>
 <div class=card><h3>Sync (Google Sheets)</h3><div class=m>Use the same Web app URL and secret key on both phones.</div><input id=url placeholder="https://script.google.com/macros/s/.../exec" value="${S.url}"><input id=key placeholder="Secret key" value="${S.key||''}"><button onclick="S.url=$('#url').value.trim();S.key=$('#key').value.trim();save();sync();alert('Saved. Syncing...')">Save & sync now</button></div>`}
 const ld=()=>window.XLSX?0:new Promise((r,j)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=r;s.onerror=()=>{alert('Internet needed to load the export library');j()};document.head.appendChild(s)});
@@ -64,8 +72,8 @@ else{add([{Item:'Income',Amount:c.inc},{Item:'Expenses',Amount:c.exp},{Item:'Ban
 add(list('cat').map(k=>({Category:k.n,Spent:c.bc[k.id]||0,'Monthly budget':k.x,Remaining:k.x?k.x-(c.bc[k.id]||0):''})),'By Category');
 add(nm().map(n=>({Person:n,Spent:c.bp[n]||0})),'By Person');add(list('acc').map(x=>({Account:x.n,Balance:bal(x)})),'Accounts')}
 XLSX.writeFile(wb,`budget-${raw?'raw':'summary'}-${c.a}_${c.b}.xlsx`)}
-function render(){$('#nav').innerHTML=[['dash','📊','Dashboard'],['add','➕','Add'],['hist','🧾','History'],['set','⚙️','Settings']].map(([k,i,l])=>`<button class="${tab==k?'on':''}" onclick="tab='${k}';if(tab!='add')edit=null;render()">${i}<br>${l}</button>`).join('');$('#app').innerHTML={dash,add,hist,set}[tab]()}
+function render(){$('#nav').innerHTML=[['dash','📊','Dashboard'],['add','➕','Add'],['hist','🧾','History'],['set','⚙️','Settings']].map(([k,i,l])=>`<button class="${tab==k?'on':''}" onclick="tab='${k}';if(tab!='add')edit=null;render()">${i}<br>${l}</button>`).join('');$('#app').innerHTML=!S.me?pick():{dash,add,hist,set}[tab]()}
 (async()=>{const d=await db;d.transaction('k').objectStore('k').get('s').onsuccess=e=>{if(e.target.result)S=e.target.result;render();sync()};render()})();
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});setInterval(sync,30000);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)U={};else{sync();render()}});setInterval(sync,30000);
 if('serviceWorker'in navigator){const had=navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js');navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had)location.reload()})}
 </script></body></html>
